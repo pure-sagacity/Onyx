@@ -245,8 +245,34 @@ fn main() {
                 }
             }
         }
-        Commands::Delete { name: _ } => {
-            // Implementation for delete command
+        Commands::Delete { name } => {
+            let config = Config::load_from_file(&cli.project_path)
+                .expect("Failed to load configuration. Maybe run `onyx init` first?");
+
+            let secret = db
+                .get_secret_by(database::SecretField::Name, &config.project_id, &name)
+                .expect("Database error while retrieving secret.");
+
+            match secret {
+                Some(secret) => {
+                    print!("Are you sure you want to delete the secret '{}'? (y/N): ", name);
+                    io::stdout().flush().unwrap();
+
+                    let mut input = String::new();
+                    io::stdin().read_line(&mut input).unwrap();
+                    if input.trim().to_lowercase() != "y" {
+                        println!("Aborting.");
+                        return;
+                    }
+
+                    db.delete_secret(secret.id.expect("Failed to retrieve secret ID"))
+                        .expect("Failed to delete secret.");
+                    println!("Secret '{}' deleted successfully.", name);
+                }
+                None => {
+                    println!("Secret '{}' not found.", name);
+                }
+            }
         }
         Commands::Inject { commands: _ } => {
             // Implementation for inject command
