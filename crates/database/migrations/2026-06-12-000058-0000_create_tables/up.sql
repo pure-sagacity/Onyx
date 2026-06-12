@@ -1,0 +1,18 @@
+-- Your SQL goes here
+CREATE TABLE IF NOT EXISTS secrets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    environment TEXT NOT NULL,
+    value TEXT NOT NULL,
+    nonce TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS projects (
+    id TEXT PRIMARY KEY UNIQUE NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
