@@ -1,9 +1,10 @@
-use std::io::{self, Write};
-
 use base64::{Engine, engine::general_purpose::STANDARD};
 use clap::Parser;
+use config_parsing::Config;
 use crypto::gen_or_retrieve_key;
-use rpassword::{ConfigBuilder, prompt_password, read_password, read_password_with_config};
+use dialoguer::{Select, theme::ColorfulTheme};
+use rpassword::{ConfigBuilder, read_password_with_config};
+use std::io::{self, Write};
 
 #[derive(Parser, Debug)]
 #[clap(name = "Onyx", version, about, long_about = None)]
@@ -18,12 +19,11 @@ struct Cli {
 
 #[derive(clap::Subcommand, Debug, Clone)]
 enum Commands {
+    Init {},
     Set {
         name: String,
     },
-    List {
-        project_id: String,
-    },
+    List {},
     Get {
         name: String,
     },
@@ -46,16 +46,79 @@ fn main() {
     let home_dir = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
 
     // Prod
-    // let DB_URL = format!("{}/.onyx/secrets.db", home_dir);
+    // let DB_URL = format!("{}/.config/onyx/secrets.db", home_dir);
     // Dev
-    let DB_URL = "./secrets.db".to_string();
+    let db_url = "./secrets.db".to_string();
 
     let cli = Cli::parse();
     let key = gen_or_retrieve_key().expect("Failed to generate or retrieve encryption key.");
 
-    let db: database::Database = database::Database { url: DB_URL };
+    let db: database::Database = database::Database { url: db_url };
 
     match cli.command {
+        Commands::Init {} => {
+            print!("Enter project name: ");
+            io::stdout().flush().unwrap();
+            let mut project_name = String::new();
+            io::stdin().read_line(&mut project_name).unwrap();
+
+            print!("Enter project description:\n> ");
+            io::stdout().flush().unwrap();
+            let mut project_description = String::new();
+            io::stdin().read_line(&mut project_description).unwrap();
+
+            if (project_name.trim().is_empty()) {
+                println!("Project name cannot be empty. Aborting.");
+                return;
+            }
+
+            let project_description = if project_description.trim().is_empty() {
+                None
+            } else {
+                Some(project_description.trim().to_string())
+            };
+
+            let selections = ["Dev", "Staging", "Production", "Other"];
+
+            let selection = Select::with_theme(&ColorfulTheme::default())
+                .with_prompt("Which environment is your project in?")
+                .default(0)
+                .items(&selections[..])
+                .interact_opt()
+                .expect("Failed to select environment.");
+
+            let environment = match selection {
+                Some(index) => {
+                    let environment = selections[index];
+                    println!("Selected environment: {}", environment);
+
+                    match environment {
+                        "Dev" => "Dev".to_string(),
+                        "Staging" => "Staging".to_string(),
+                        "Production" => "Production".to_string(),
+                        "Other" => {
+                            print!("Enter custom environment name: ");
+                            io::stdout().flush().unwrap();
+                            let mut custom_env = String::new();
+                            io::stdin().read_line(&mut custom_env).unwrap();
+                            // Trim and convert the resulting &str into an owned String
+                            custom_env.trim().to_string()
+                        }
+                        _ => "Dev".to_string(),
+                    }
+                }
+                None => "Dev".to_string(),
+            };
+
+            let project = db
+                .create_project(project_name, environment.clone(), project_description)
+                .expect("Failed to create the project, please try again.");
+
+            Config::create_config_file(&project.id, &environment.to_lowercase(), None)
+                .expect("Failed to create configuration files.");
+
+            println!("Project created successfully.");
+        }
         Commands::Set { name } => {
             // 1. Attempt to fetch the secret immediately
             let existing_secret = db

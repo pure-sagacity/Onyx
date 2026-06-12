@@ -7,3 +7,4 @@ edition = "2024"
 chrono = "0.4.45"
 diesel = { version = "2.3.10", features = ["sqlite", "chrono", "r2d2"] }
 diesel_migrations = { version = "2.0.0", features = ["sqlite"] }
+uuid = "1.23.3"
