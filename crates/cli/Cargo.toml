@@ -13,3 +13,4 @@ rpassword = "7.5.4"
 base64 = "0.22.1"
 uuid = { version = "1.23.3", features = ["v4"] }
 dialoguer = "0.12"
+arboard = "3.6.1"

@@ -1,8 +1,8 @@
+use arboard::Clipboard;
 use base64::{Engine, engine::general_purpose::STANDARD};
 use clap::Parser;
 use config_parsing::Config;
 use crypto::gen_or_retrieve_key;
-use database::schema::secrets;
 use dialoguer::{Select, theme::ColorfulTheme};
 use rpassword::{ConfigBuilder, read_password_with_config};
 use std::io::{self, Write};
@@ -27,6 +27,9 @@ enum Commands {
     List {},
     Get {
         name: String,
+
+        #[arg(long)]
+        show: bool,
     },
     Delete {
         name: String,
@@ -121,13 +124,15 @@ fn main() {
             println!("Project created successfully.");
         }
         Commands::Set { name } => {
+            let config = Config::load_from_file(&cli.project_path)
+                .expect("Failed to load configuration. Maybe run `onyx init` first?");
+
             let existing_secret = db
-                .get_secret_by(database::SecretField::Name, &name)
+                .get_secret_by(database::SecretField::Name, &config.project_id, &name)
                 .expect("Database error while retrieving secret.");
 
             match existing_secret {
                 Some(secret) => {
-                    // --- OVERWRITE LOGIC ---
                     print!("Secret already exists. Do you want to overwrite it? (y/N): ");
                     io::stdout().flush().unwrap();
 
@@ -198,8 +203,47 @@ fn main() {
                 println!("- {}", secret.name);
             }
         }
-        Commands::Get { name: _ } => {
-            // Implementation for get command
+        Commands::Get { name, show } => {
+            let config = Config::load_from_file(&cli.project_path)
+                .expect("Failed to load configuration. Maybe run `onyx init` first?");
+
+            let secret = db
+                .get_secret_by(database::SecretField::Name, &config.project_id, &name)
+                .expect("Database error while retrieving secret.");
+
+            match secret {
+                Some(secret) => {
+                    let decoded_ciphertext = STANDARD
+                        .decode(secret.value)
+                        .expect("Failed to decode the secret value.");
+                    let decoded_nonce = STANDARD
+                        .decode(secret.nonce)
+                        .expect("Failed to decode the nonce.");
+
+                    let decrypted_value = crypto::decrypt(
+                        decoded_nonce
+                            .as_slice()
+                            .try_into()
+                            .expect("Failed to convert nonce to the expected format."),
+                        &decoded_ciphertext,
+                        &key,
+                    );
+
+                    if show {
+                        println!("Value: {}", decrypted_value);
+                    } else {
+                        let mut clipboard =
+                            Clipboard::new().expect("Failed to initialize clipboard.");
+                        clipboard
+                            .set_text(decrypted_value)
+                            .expect("Failed to copy to clipboard.");
+                        println!("Secret value copied to clipboard.");
+                    }
+                }
+                None => {
+                    println!("Secret '{}' not found.", name);
+                }
+            }
         }
         Commands::Delete { name: _ } => {
             // Implementation for delete command

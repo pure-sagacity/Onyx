@@ -157,6 +157,7 @@ impl Database {
     pub fn get_secret_by(
         &self,
         method: SecretField,
+        project_id_to_match: &str,
         value_to_match: &str,
     ) -> DBResult<Option<Secret>> {
         let conn = &mut Database::establish_connection(&self.url)?;
@@ -164,22 +165,27 @@ impl Database {
         let secret = match method {
             SecretField::Name => secrets
                 .filter(name.eq(value_to_match.to_string()))
+                .filter(project_id.eq(project_id_to_match))
                 .first::<Secret>(conn)
                 .optional()?,
             SecretField::Value => secrets
                 .filter(value.eq(value_to_match.to_string()))
+                .filter(project_id.eq(project_id_to_match))
                 .first::<Secret>(conn)
                 .optional()?,
             SecretField::Nonce => secrets
                 .filter(nonce.eq(value_to_match.to_string()))
+                .filter(project_id.eq(project_id_to_match))
                 .first::<Secret>(conn)
                 .optional()?,
             SecretField::ProjectId => secrets
                 .filter(project_id.eq(value_to_match.to_string()))
+                .filter(project_id.eq(project_id_to_match))
                 .first::<Secret>(conn)
                 .optional()?,
             SecretField::Environment => secrets
                 .filter(environment.eq(value_to_match.to_string()))
+                .filter(project_id.eq(project_id_to_match))
                 .first::<Secret>(conn)
                 .optional()?,
         };
