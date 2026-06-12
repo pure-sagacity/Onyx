@@ -35,6 +35,14 @@ impl Database {
         Ok(conn)
     }
 
+    pub fn get_all(&self) -> DBResult<Vec<models::Secret>> {
+        let conn = &mut Database::establish_connection(&self.url)?;
+
+        let all_secrets = secrets.load(conn)?;
+
+        Ok(all_secrets)
+    }
+
     pub fn get_secrets(&self, other_project_id: &str) -> DBResult<Vec<models::Secret>> {
         let conn = &mut Database::establish_connection(&self.url)?;
 

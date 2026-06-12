@@ -21,6 +21,9 @@ enum Commands {
     Set {
         name: String,
     },
+    List {
+        project_id: String,
+    },
     Get {
         name: String,
     },
@@ -111,6 +114,18 @@ fn main() {
                         "dev".to_string(),
                     )
                     .expect("Failed to create secret.");
+                }
+            }
+        }
+        Commands::List { project_id: _ } => {
+            // In the future, we will list only secrets related to the project_id provided. For now, we will list all secrets.
+            let secrets = db.get_all().expect("Failed to retrieve secrets.");
+            if secrets.len() == 0 {
+                println!("No secrets found.");
+            } else {
+                println!("Secrets:");
+                for secret in secrets {
+                    println!("- {}", secret.name);
                 }
             }
         }
