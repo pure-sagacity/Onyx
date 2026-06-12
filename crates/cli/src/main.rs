@@ -2,6 +2,7 @@ use base64::{Engine, engine::general_purpose::STANDARD};
 use clap::Parser;
 use config_parsing::Config;
 use crypto::gen_or_retrieve_key;
+use database::schema::secrets;
 use dialoguer::{Select, theme::ColorfulTheme};
 use rpassword::{ConfigBuilder, read_password_with_config};
 use std::io::{self, Write};
@@ -10,7 +11,7 @@ use std::io::{self, Write};
 #[clap(name = "Onyx", version, about, long_about = None)]
 struct Cli {
     /// The path to project folder
-    #[clap(short, long, default_value = "./.onyx/")]
+    #[clap(short, long, default_value = ".")]
     project_path: String,
 
     #[command(subcommand)]
@@ -120,7 +121,6 @@ fn main() {
             println!("Project created successfully.");
         }
         Commands::Set { name } => {
-            // 1. Attempt to fetch the secret immediately
             let existing_secret = db
                 .get_secret_by(database::SecretField::Name, &name)
                 .expect("Database error while retrieving secret.");
@@ -156,7 +156,6 @@ fn main() {
                     .expect("Failed to update secret.");
                 }
                 None => {
-                    // --- NEW SECRET LOGIC ---
                     print!("Enter secret value: ");
                     io::stdout().flush().unwrap();
 
@@ -167,29 +166,36 @@ fn main() {
                     let encrypted_value = STANDARD.encode(ciphertext);
                     let new_nonce = STANDARD.encode(nonce);
 
-                    let fake_uuid = uuid::Uuid::new_v4().to_string(); // Placeholder for project_id
+                    let config = Config::load_from_file(&cli.project_path)
+                        .expect("Failed to load configuration. Maybe run `onyx init` first?");
 
                     db.add_secret(
                         name,
                         encrypted_value,
                         new_nonce,
-                        fake_uuid.clone(),
+                        config.project_id.clone(),
                         "dev".to_string(),
                     )
                     .expect("Failed to create secret.");
                 }
             }
         }
-        Commands::List { project_id: _ } => {
-            // In the future, we will list only secrets related to the project_id provided. For now, we will list all secrets.
-            let secrets = db.get_all().expect("Failed to retrieve secrets.");
-            if secrets.len() == 0 {
-                println!("No secrets found.");
-            } else {
-                println!("Secrets:");
-                for secret in secrets {
-                    println!("- {}", secret.name);
-                }
+        Commands::List {} => {
+            let config = Config::load_from_file(&cli.project_path)
+                .expect("Failed to load configuration. Maybe run `onyx init` first?");
+
+            let secrets = db
+                .get_secrets(&config.project_id)
+                .expect("Failed to get secrets from DB.");
+
+            if secrets.is_empty() {
+                println!("No secrets found for this project.");
+                return;
+            }
+
+            println!("Secrets:");
+            for secret in secrets {
+                println!("- {}", secret.name);
             }
         }
         Commands::Get { name: _ } => {
