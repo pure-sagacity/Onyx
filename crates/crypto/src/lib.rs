@@ -9,6 +9,7 @@ use keyring::Entry;
 // XChaCha20Poly1305 uses XNonce (24 bytes) automatically.
 type Nonce = chacha20poly1305::XNonce;
 
+/// Encrypts a secret using XChaCha20Poly1305 and returns the nonce and ciphertext.
 pub fn encrypt(secret: String, key: &[u8; 32]) -> ([u8; 24], Vec<u8>) {
     let secret: &[u8] = secret.as_bytes();
     let cipher = XChaCha20Poly1305::new(Key::from_slice(key));
@@ -35,6 +36,12 @@ pub fn decrypt(nonce: &[u8; 24], ciphertext: &[u8], key: &[u8; 32]) -> String {
     let plaintext: Vec<u8> = cipher.decrypt(&nonce, ciphertext).unwrap();
 
     String::from_utf8(plaintext).unwrap()
+}
+
+pub fn generate_nonce() -> [u8; 24] {
+    let mut nonce: [u8; 24] = [0u8; 24];
+    OsRng.fill_bytes(&mut nonce);
+    nonce
 }
 
 pub fn generate_key() -> [u8; 32] {

@@ -10,3 +10,5 @@ database = { path = "../database" }
 
 clap = { version = "4", features = ["derive"] }
 rpassword = "7.5.4"
+base64 = "0.22.1"
+uuid = { version = "1.23.3", features = ["v4"] }

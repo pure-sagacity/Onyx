@@ -1,4 +1,9 @@
+use std::io::{self, Write};
+
+use base64::{Engine, engine::general_purpose::STANDARD};
 use clap::Parser;
+use crypto::gen_or_retrieve_key;
+use rpassword::{ConfigBuilder, prompt_password, read_password, read_password_with_config};
 
 #[derive(Parser, Debug)]
 #[clap(name = "Onyx", version, about, long_about = None)]
@@ -33,15 +38,81 @@ enum Commands {
 }
 
 fn main() {
-    let cli = Cli::parse();
+    let password_entry_config = ConfigBuilder::new().password_feedback_mask('*').build();
 
-    let database = database::Database {
-        
-    }
+    let home_dir = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+
+    // Prod
+    // let DB_URL = format!("{}/.onyx/secrets.db", home_dir);
+    // Dev
+    let DB_URL = "./secrets.db".to_string();
+
+    let cli = Cli::parse();
+    let key = gen_or_retrieve_key().expect("Failed to generate or retrieve encryption key.");
+
+    let db: database::Database = database::Database { url: DB_URL };
 
     match cli.command {
-        Commands::Set { name: _ } => {
-            // Implementation for set command
+        Commands::Set { name } => {
+            // 1. Attempt to fetch the secret immediately
+            let existing_secret = db
+                .get_secret_by(database::SecretField::Name, &name)
+                .expect("Database error while retrieving secret.");
+
+            match existing_secret {
+                Some(secret) => {
+                    // --- OVERWRITE LOGIC ---
+                    print!("Secret already exists. Do you want to overwrite it? (y/N): ");
+                    io::stdout().flush().unwrap();
+
+                    let mut input = String::new();
+                    io::stdin().read_line(&mut input).unwrap();
+                    if input.trim().to_lowercase() != "y" {
+                        println!("Aborting.");
+                        return;
+                    }
+
+                    print!("Enter secret value: ");
+                    io::stdout().flush().unwrap();
+
+                    let value = read_password_with_config(password_entry_config)
+                        .expect("Failed to read secret value.");
+
+                    let (nonce, ciphertext) = crypto::encrypt(value, &key);
+                    let encrypted_value = STANDARD.encode(ciphertext);
+                    let new_nonce = STANDARD.encode(nonce);
+
+                    db.set_secret(
+                        secret.id.expect("Failed to retrieve secret ID"),
+                        encrypted_value,
+                        new_nonce,
+                    )
+                    .expect("Failed to update secret.");
+                }
+                None => {
+                    // --- NEW SECRET LOGIC ---
+                    print!("Enter secret value: ");
+                    io::stdout().flush().unwrap();
+
+                    let value = read_password_with_config(password_entry_config)
+                        .expect("Failed to read secret value.");
+
+                    let (nonce, ciphertext) = crypto::encrypt(value, &key);
+                    let encrypted_value = STANDARD.encode(ciphertext);
+                    let new_nonce = STANDARD.encode(nonce);
+
+                    let fake_uuid = uuid::Uuid::new_v4().to_string(); // Placeholder for project_id
+
+                    db.add_secret(
+                        name,
+                        encrypted_value,
+                        new_nonce,
+                        fake_uuid.clone(),
+                        "dev".to_string(),
+                    )
+                    .expect("Failed to create secret.");
+                }
+            }
         }
         Commands::Get { name: _ } => {
             // Implementation for get command
