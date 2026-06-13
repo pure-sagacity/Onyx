@@ -5,7 +5,10 @@ use config_parsing::Config;
 use crypto::gen_or_retrieve_key;
 use dialoguer::{Select, theme::ColorfulTheme};
 use rpassword::{ConfigBuilder, read_password_with_config};
-use std::io::{self, Write};
+use std::{
+    io::{self, Write},
+    process::Command,
+};
 
 #[derive(Parser, Debug)]
 #[clap(name = "Onyx", version, about, long_about = None)]
@@ -71,7 +74,7 @@ fn main() {
             let mut project_description = String::new();
             io::stdin().read_line(&mut project_description).unwrap();
 
-            if (project_name.trim().is_empty()) {
+            if project_name.trim().is_empty() {
                 println!("Project name cannot be empty. Aborting.");
                 return;
             }
@@ -255,7 +258,10 @@ fn main() {
 
             match secret {
                 Some(secret) => {
-                    print!("Are you sure you want to delete the secret '{}'? (y/N): ", name);
+                    print!(
+                        "Are you sure you want to delete the secret '{}'? (y/N): ",
+                        name
+                    );
                     io::stdout().flush().unwrap();
 
                     let mut input = String::new();
@@ -274,11 +280,99 @@ fn main() {
                 }
             }
         }
-        Commands::Inject { commands: _ } => {
-            // Implementation for inject command
+        Commands::Inject { commands } => {
+            let config = Config::load_from_file(&cli.project_path)
+                .expect("Failed to load configuration. Maybe run `onyx init` first?");
+
+            let secrets = db
+                .get_secrets(&config.project_id)
+                .expect("Failed to get secrets from DB.");
+
+            if secrets.is_empty() {
+                println!("No secrets found for this project.");
+                return;
+            }
+
+            // The command could have args, so we'll handle that.
+            // bun dev
+            let cmd = &commands[0];
+            let args = &commands[1..];
+
+            let command = Command::new(cmd)
+                .args(args)
+                .envs(secrets.into_iter().map(|secret| {
+                    let decoded_ciphertext = STANDARD
+                        .decode(secret.value)
+                        .expect("Failed to decode the secret value.");
+                    let decoded_nonce = STANDARD
+                        .decode(secret.nonce)
+                        .expect("Failed to decode the nonce.");
+
+                    let decrypted_value = crypto::decrypt(
+                        decoded_nonce
+                            .as_slice()
+                            .try_into()
+                            .expect("Failed to convert nonce to the expected format."),
+                        &decoded_ciphertext,
+                        &key,
+                    );
+
+                    (secret.name, decrypted_value)
+                }))
+                .status()
+                .expect("Failed to execute the command.");
+
+            if !command.success() {
+                println!("Command exited with a non-zero status.");
+            }
         }
-        Commands::Shell { shell: _ } => {
-            // Implementation for shell command
+        Commands::Shell { shell } => {
+            // This will be like inject, but use either the provided shell or the user's default shell as the command
+            let shell = match shell {
+                Some(s) => s,
+                None => std::env::var("SHELL").unwrap_or_else(|_| "sh".to_string()),
+            };
+
+            let config = Config::load_from_file(&cli.project_path)
+                .expect("Failed to load configuration. Maybe run `onyx init` first?");
+
+            let secrets = db
+                .get_secrets(&config.project_id)
+                .expect("Failed to get secrets from DB.");
+
+            if secrets.is_empty() {
+                println!("No secrets found for this project.");
+                return;
+            }
+
+            println!("Launching shell with injected secrets...");
+
+            let command = Command::new(shell)
+                .envs(secrets.into_iter().map(|secret| {
+                    let decoded_ciphertext = STANDARD
+                        .decode(secret.value)
+                        .expect("Failed to decode the secret value.");
+                    let decoded_nonce = STANDARD
+                        .decode(secret.nonce)
+                        .expect("Failed to decode the nonce.");
+
+                    let decrypted_value = crypto::decrypt(
+                        decoded_nonce
+                            .as_slice()
+                            .try_into()
+                            .expect("Failed to convert nonce to the expected format."),
+                        &decoded_ciphertext,
+                        &key,
+                    );
+
+                    (secret.name, decrypted_value)
+                }))
+                .status()
+                .expect("Failed to launch the shell.");
+
+            if !command.success() {
+                println!("Shell exited with a non-zero status.");
+            }
         }
     }
 }
