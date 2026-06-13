@@ -52,10 +52,7 @@ fn main() {
 
     let home_dir = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
 
-    // Prod
-    // let DB_URL = format!("{}/.config/onyx/secrets.db", home_dir);
-    // Dev
-    let db_url = "./secrets.db".to_string();
+    let db_url = format!("{}/.config/onyx/secrets.db", home_dir);
 
     let cli = Cli::parse();
     let key = gen_or_retrieve_key().expect("Failed to generate or retrieve encryption key.");
